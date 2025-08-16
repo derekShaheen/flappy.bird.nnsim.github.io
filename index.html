@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Flappy Neuroevolution — Enhanced</title>
+<style>
+  :root{ --bg:#0e1116; --panel:#161a22; --glass:rgba(255,255,255,.06); --ink:#e6ebf5; --muted:#9aa4b2; --accent:#5eead4; --accent2:#60a5fa; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 900px at 20% -10%, rgba(96,165,250,.12), transparent), radial-gradient(600px 600px at 120% 20%, rgba(94,234,212,.10), transparent), var(--bg); color:var(--ink); font:14px/1.35 system-ui,Segoe UI,Roboto,Ubuntu,Arial,sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #1d2330;background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0));position:sticky;top:0;z-index:50;backdrop-filter:saturate(140%) blur(6px)}
+  header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.4px}
+  .pill{padding:6px 10px;border-radius:999px;background:var(--glass);color:var(--muted);border:1px solid #222738}
+  .wrap{display:grid;grid-template-columns:300px 1fr 380px;gap:12px;padding:12px}
+  aside,.right{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));border:1px solid #1f2534;border-radius:14px;padding:12px}
+  .controls{display:grid;gap:10px}
+  .controls .group{padding:10px;border:1px solid #232a3a;border-radius:12px;background:rgba(255,255,255,.03)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .row label{color:var(--muted);font-size:12px}
+  input[type=range]{width:100%}
+  button{background:linear-gradient(180deg,#1b2333,#161c28);border:1px solid #2a344a;color:var(--ink);padding:8px 10px;border-radius:10px;cursor:pointer}
+  button:hover{border-color:#3a4560}
+  button.primary{background:linear-gradient(180deg,#1f2d3f,#1a2232);border-color:#3b82f6}
+  button.ghost{background:transparent;border-color:#2a344a}
+  #worldGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+  .arena{position:relative;border:1px solid #222b3d;border-radius:12px;overflow:hidden;background:#0b0e14}
+  .arena .overlay{position:absolute;inset:0;pointer-events:none;font-size:11px;color:#9fb0c7;padding:6px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+  .stat{padding:8px;border:1px solid #232a3a;border-radius:10px;background:rgba(255,255,255,.02)}
+  .stat h4{margin:0 0 4px 0;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.2px}
+  .stat .val{font-size:16px;font-weight:700}
+  .right .netTop{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  canvas{display:block}
+  .kbd{font:12px/1.2 ui-monospace,Menlo,Consolas,monospace;background:#0e1420;border:1px solid #263149;padding:2px 6px;border-radius:6px;color:#c7d2fe}
+  .legend,.small{font-size:12px;color:var(--muted)}
+  .tests{margin-top:8px}
+  .tests .pass{color:#22c55e}
+  .tests .fail{color:#ef4444}
+  .spark{background:rgba(255,255,255,.03);border:1px solid #232a3a;border-radius:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Flappy Neuroevolution</h1>
+  <span class="pill">NEAT‑style steady‑state evolution • multi‑arena</span>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <button id="btnPause" class="primary">⏸️ Pause</button>
+    <button id="btnReset" class="ghost">🔄 Reset</button>
+    <button id="btnSave" class="ghost">💾 Save Best</button>
+    <label class="kbd" for="fileLoad" style="cursor:pointer">Load JSON</label>
+    <input id="fileLoad" type="file" accept="application/json" style="display:none" />
+  </div>
+</header>
+<div class="wrap">
+  <aside>
+    <div class="controls">
+      <div class="group">
+        <div class="row"><label>Speed (sim x)</label><span id="lblSpeed">1</span></div>
+        <input id="rngSpeed" type="range" min="1" max="400" step="1" value="1" />
+        <div class="small">Runs multiple physics steps per frame; rendering is auto-throttled.</div>
+      </div>
+      <div class="group">
+        <div class="row"><label>Arenas</label><span id="lblArenas">8</span></div>
+        <input id="rngArenas" type="range" min="1" max="24" step="1" value="8" />
+        <div class="row"><label>Gap Height</label><span id="lblGap">140</span></div>
+        <input id="rngGap" type="range" min="10" max="260" step="2" value="140" />
+        <div class="row"><label>Pipe Spacing</label><span id="lblSpacing">260</span></div>
+        <input id="rngSpacing" type="range" min="100" max="480" step="10" value="260" />
+        <div class="row"><label>Gravity</label><span id="lblGrav">0.7</span></div>
+        <input id="rngGrav" type="range" min="0.3" max="1.4" step="0.05" value="0.7" />
+        <div class="row"><label>Flap Impulse</label><span id="lblFlap">-9.0</span></div>
+        <input id="rngFlap" type="range" min="-16" max="-5" step="0.5" value="-9" />
+      </div>
+      <div class="group">
+        <div class="row"><label>Mutation: weight σ</label><span id="lblSigma">0.5</span></div>
+        <input id="rngSigma" type="range" min="0.05" max="2.0" step="0.05" value="0.5"/>
+        <div class="row"><label>p(weight)</label><span id="lblPMW">0.3</span></div>
+        <input id="rngPMW" type="range" min="0" max="1" step="0.05" value="0.3"/>
+        <div class="row"><label>p(add conn)</label><span id="lblPAC">0.2</span></div>
+        <input id="rngPAC" type="range" min="0" max="1" step="0.05" value="0.2"/>
+        <div class="row"><label>p(add node)</label><span id="lblPAN">0.05</span></div>
+        <input id="rngPAN" type="range" min="0" max="0.5" step="0.01" value="0.05"/>
+        <div class="row"><label>p(del conn)</label><span id="lblPDC">0.05</span></div>
+        <input id="rngPDC" type="range" min="0" max="1" step="0.01" value="0.05"/>
+        <div class="row"><label>p(del node)</label><span id="lblPDN">0.02</span></div>
+        <input id="rngPDN" type="range" min="0" max="0.5" step="0.01" value="0.02"/>
+        <div class="row"><label>Elites (%)</label><span id="lblElite">20</span></div>
+        <input id="rngElite" type="range" min="5" max="60" step="5" value="20"/>
+      </div>
+      <div class="group">
+        <div class="row"><label>Best threshold (pipes)</label><span id="lblBestThresh">15</span></div>
+        <input id="rngBestThresh" type="range" min="5" max="100" step="5" value="15"/>
+        <div class="small">When an agent beats this, we snapshot it as a candidate "best ever".</div>
+      </div>
+      <div class="group">
+        <div class="row"><label>Network Layers (max)</label><span id="lblLayers">3</span></div>
+        <input id="rngLayers" type="range" min="1" max="6" step="1" value="3"/>
+        <div class="small">Topology evolution inserts hidden nodes (forward-only connections keep it acyclic).</div>
+      </div>
+      <div class="group">
+        <div class="row"><label>Visuals</label><span class="small">overlays</span></div>
+        <label class="small"><input id="chkCenters" type="checkbox" checked> Show gap centerlines</label>
+        <label class="small"><input id="chkHit" type="checkbox"> Show hitboxes</label>
+        <label class="small"><input id="chkTrail" type="checkbox" checked> Show bird trails</label>
+      </div>
+      <div class="group legend">
+        <div>Fitness = distance + <span class="kbd">+10</span> per pipe + bonus for center‑aligned passes. Penalty for collisions and spam‑flapping.</div>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="worldGrid"></div>
+  </main>
+
+  <div class="right">
+    <div class="netTop">
+      <strong>Network Viewer</strong>
+      <select id="selWho"></select>
+      <button id="btnFollow" class="ghost">Follow</button>
+    </div>
+    <canvas id="netCanvas" width="340" height="320"></canvas>
+    <div class="stats">
+      <div class="stat"><h4>Episodes</h4><div id="stEpisodes" class="val">0</div></div>
+      <div class="stat"><h4>Best Pipes (ever)</h4><div id="stBestPipes" class="val">0</div></div>
+      <div class="stat"><h4>Best Fitness (ever)</h4><div id="stBestFit" class="val">0</div></div>
+      <div class="stat"><h4>Avg Fitness (100)</h4><div id="stAvg100" class="val">0</div></div>
+      <div class="stat"><h4>Avg Pipes (100)</h4><div id="stAvgPipes" class="val">0</div></div>
+      <div class="stat"><h4>Mean Life (100)</h4><div id="stAvgLife" class="val">0</div></div>
+      <div class="stat"><h4>Avg Flaps (100)</h4><div id="stAvgFlaps" class="val">0</div></div>
+      <div class="stat"><h4>FPS</h4><div id="stFPS" class="val">0</div></div>
+    </div>
+    <div style="margin-top:8px;display:grid;grid-template-columns:1fr;gap:8px">
+      <canvas id="sparkFitness" class="spark" width="340" height="36"></canvas>
+      <canvas id="sparkPipes" class="spark" width="340" height="36"></canvas>
+      <canvas id="sparkLife" class="spark" width="340" height="36"></canvas>
+    </div>
+    <div style="margin-top:8px">
+      <strong>Leaderboard (live)</strong>
+      <ol id="leader" class="small" style="margin:6px 0 0 18px"></ol>
+    </div>
+    <div class="tests">
+      <button id="btnSelfTest" class="ghost">Run self‑tests</button>
+      <div id="testOut" class="small"></div>
+    </div>
+    <div style="margin-top:8px" class="small">Tips: <span class="kbd">Space</span> pause/resume • <span class="kbd">F</span> follow • <span class="kbd">S</span> save best</div>
+  </div>
+</div>
+
+<script>
+// ===== Utilities =====
+const rand=(a=1,b=0)=>Math.random()*(b-a)+a; const rnd=n=>Math.floor(Math.random()*n);
+const clamp=(x,a,b)=>x<a?a:x>b?b:x; const sigmoid=x=>1/(1+Math.exp(-x));
+const tanh=Math.tanh||((x)=>{const e=Math.exp(2*x);return (e-1)/(e+1)});
+const choice=arr=>arr[rnd(arr.length)]; const deepClone=o=>JSON.parse(JSON.stringify(o));
+
+// ===== Config =====
+const CFG={
+  width:240,height:400,birdX:60,
+  gravity:.7, flapImpulse:-9,
+  gap:140, spacing:260, pipeW:58,
+  arenas:8, speed:1,
+  layers:3,
+  mutSigma:.5,pMutWeight:.3,pAddConn:.2,pAddNode:.05,
+  pDelConn:.05, pDelNode:.02,
+  elitePct:.2,
+  bestThresh:15,
+  showCenters:true, showHit:false, showTrail:true,
+  trailLen:60
+};
+
+// ===== Genome (NEAT‑ish) =====
+class Genome{
+  constructor(ic,oc,maxL){this.ic=ic;this.oc=oc;this.maxL=maxL;this.layers=Array.from({length:maxL},()=>0);this.conns=[]}
+  static minimal(ic,oc,maxL){const g=new Genome(ic,oc,maxL);for(let i=0;i<ic;i++)for(let o=0;o<oc;o++)g.conns.push({from:{L:-1,i},to:{L:maxL,i:o},w:rand(-1,1),enabled:true});return g}
+  eval(inputs){const vals=new Map();for(let i=0;i<this.ic;i++)vals.set(key({L:-1,i}),inputs[i]);for(let L=0;L<=this.maxL;L++){const n=(L===this.maxL?this.oc:this.layers[L]);for(let i=0;i<n;i++)vals.set(key({L,i}),0)}for(const c of this.conns){if(!c.enabled)continue;const kf=key(c.from),kt=key(c.to);vals.set(kt,(vals.get(kt)||0)+(vals.get(kf)||0)*c.w)}for(let L=0;L<this.maxL;L++){for(let i=0;i<this.layers[L];i++){const k=key({L,i});vals.set(k,tanh(vals.get(k)))}}const out=[];for(let i=0;i<this.oc;i++){const k=key({L:this.maxL,i});out[i]=sigmoid(vals.get(k))}return{out,vals}}
+  mutateWeights(sigma,p){for(const c of this.conns){if(Math.random()<p)c.w+=rand(-sigma,sigma)}}
+  addConnection(p){if(Math.random()>=p) return false; const fromLayers=[-1,...Array.from({length:this.maxL},(_,L)=>L)].filter(L=>L<this.maxL); const fromL=choice(fromLayers); const toLayers=Array.from({length:this.maxL-(fromL+1)},(_,k)=>fromL+1+k).concat([this.maxL]); const toL=choice(toLayers); const fromCount=fromL===-1?this.ic:this.layers[fromL]; const toCount=toL===this.maxL?this.oc:this.layers[toL]; if(fromCount===0||toCount===0) return false; const from={L:fromL,i:rnd(fromCount)}, to={L:toL,i:rnd(toCount)}; if(this.conns.some(c=>c.enabled && same(c.from,from) && same(c.to,to))) return false; this.conns.push({from,to,w:rand(-1,1),enabled:true}); return true}
+  addNode(p){ if(Math.random()>=p) return false; const candidates=this.conns.filter(c=>c.enabled && c.to.L>c.from.L); if(!candidates.length){ this.addConnection(1); return false } const c=choice(candidates); c.enabled=false; const possible=[]; for(let L=c.from.L+1; L<=Math.min(c.to.L-1, this.maxL-1); L++) possible.push(L); if(!possible.length){ c.enabled=true; return false } const L=choice(possible); const idx=this.layers[L]++; this.conns.push({from:deepClone(c.from), to:{L,i:idx}, w:1, enabled:true}); this.conns.push({from:{L,i:idx}, to:deepClone(c.to), w:c.w, enabled:true}); return true }
+  removeConnection(p){ if(Math.random()>=p) return false; const enabled=this.conns.filter(c=>c.enabled); if(!enabled.length) return false; const target=choice(enabled); const i=this.conns.indexOf(target); if(i>=0) this.conns.splice(i,1); if(this.conns.length===0){ for(let i=0;i<this.ic;i++) for(let o=0;o<this.oc;o++) this.conns.push({from:{L:-1,i}, to:{L:this.maxL,i:o}, w:rand(-1,1), enabled:true}); } return true }
+  removeNode(p){ if(Math.random()>=p) return false; const layers=[]; for(let L=0;L<this.maxL;L++) if(this.layers[L]>0) layers.push(L); if(!layers.length) return false; const L=choice(layers); const idx=rnd(this.layers[L]); this.conns=this.conns.filter(c=> !(c.from.L===L&&c.from.i===idx) && !(c.to.L===L&&c.to.i===idx)); for(const c of this.conns){ if(c.from.L===L && c.from.i>idx) c.from.i--; if(c.to.L===L && c.to.i>idx) c.to.i--; } this.layers[L]--; if(this.conns.length===0){ for(let i=0;i<this.ic;i++) for(let o=0;o<this.oc;o++) this.conns.push({from:{L:-1,i}, to:{L:this.maxL,i:o}, w:rand(-1,1), enabled:true}); } return true }
+  clone(){return Object.assign(new Genome(this.ic,this.oc,this.maxL),deepClone({layers:this.layers,conns:this.conns}))}
+}
+const key=n=>`${n.L}:${n.i}`; const same=(a,b)=>a.L===b.L&&a.i===b.i;
+const crossover=(a,b)=>{const child=a.clone();const map=new Map();for(const c of a.conns)map.set(key({from:c.from,to:c.to}),deepClone(c));for(const c of b.conns){const k=key({from:c.from,to:c.to});if(map.has(k)){const mc=map.get(k);if(Math.random()<.5){mc.w=c.w;mc.enabled=c.enabled}}else{if(Math.random()<.5)map.set(k,deepClone(c))}}child.conns=[...map.values()];for(let L=0;L<child.maxL;L++)child.layers[L]=Math.max(a.layers[L],b.layers[L]);return child};
+
+// ===== Arena & Agent =====
+class Arena{ constructor(id){this.id=id;this.w=CFG.width;this.h=CFG.height;this.canvas=document.createElement('canvas');this.canvas.width=this.w;this.canvas.height=this.h;this.canvas.className='arena';this.ctx=this.canvas.getContext('2d');this.overlay=document.createElement('div');this.overlay.className='overlay';this.canvas.appendChild(this.overlay);this.resetWorld()} resetWorld(){this.pipes=[];this.nextId=0;this.time=0;this.passed=0;while(this.pipes.length<4)this.addPipe(this.w+this.pipes.length*CFG.spacing)} addPipe(x){const gap=CFG.gap,margin=20;const topH=Math.max(margin,Math.floor(rand(40,this.h-gap-40)));this.pipes.push({id:this.nextId++,x,w:CFG.pipeW,top:topH,gap})} updatePhysics(b){const g=CFG.gravity,imp=CFG.flapImpulse;const np=this.nextPipeFor(b);const inputs=this.inputsFor(b,np);const {out,vals}=b.brain.eval(inputs);const flap=out[0]>0.5;if(flap){b.vy+=imp;b.flaps++;b.fitness-=0.01}b.vy+=g;b.y+=b.vy;this.time++;b.lifeSteps++;if(CFG.showTrail){b.trail.push({x:b.x,y:b.y});if(b.trail.length>CFG.trailLen)b.trail.shift()}for(const p of this.pipes)p.x-=2.2;if(this.pipes[0].x+CFG.pipeW<0){this.pipes.shift();this.addPipe(this.pipes[this.pipes.length-1].x+CFG.spacing)}if(np&&b.x>np.x+CFG.pipeW&&!np._counted){np._counted=true;this.passed++;b.fitness+=10;b.pipes++}if(np&&b.x>np.x&&b.x<np.x+CFG.pipeW){const center=np.top+np.gap/2;const dy=Math.abs(b.y-center);b.fitness+=clamp(1-dy/(np.gap/2),0,1)*0.1}b.fitness+=0.02;if(b.y<0||b.y>this.h)b.alive=false;if(np){if((b.x>np.x-10&&b.x<np.x+CFG.pipeW+10)&&(b.y<np.top||b.y>np.top+np.gap))b.alive=false}return{inputs,vals,flap}} nextPipeFor(b){return this.pipes.find(p=>p.x+CFG.pipeW>=b.x)||this.pipes[0]} inputsFor(b,np){const y=b.y/this.h;const vy=sigmoid(b.vy/10);const dx=clamp((np.x+CFG.pipeW-b.x)/this.w,0,1);const gapTop=(np.top)/this.h;const gapBot=(np.top+np.gap)/this.h;const bias=1;return[y,vy,dx,gapTop,gapBot,bias]} draw(b,highlight=false){const ctx=this.ctx;ctx.clearRect(0,0,this.w,this.h);ctx.fillStyle="#0c111b";ctx.fillRect(0,0,this.w,this.h);for(const p of this.pipes){ctx.fillStyle="#22314d";ctx.fillRect(p.x,0,CFG.pipeW,p.top);ctx.fillRect(p.x,p.top+p.gap,CFG.pipeW,this.h-(p.top+p.gap));if(CFG.showCenters){ctx.strokeStyle="#334b79";ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(p.x,p.top+p.gap/2);ctx.lineTo(p.x+CFG.pipeW,p.top+p.gap/2);ctx.stroke();ctx.setLineDash([])}if(CFG.showHit){ctx.strokeStyle="#7dd3fc";ctx.strokeRect(p.x,0,CFG.pipeW,p.top);ctx.strokeRect(p.x,p.top+p.gap,CFG.pipeW,this.h-(p.top+p.gap))}ctx.fillStyle="#2b3c5c";ctx.fillRect(p.x-2,p.top-6,CFG.pipeW+4,6);ctx.fillRect(p.x-2,p.top+p.gap,CFG.pipeW+4,6)}if(CFG.showTrail&&b.trail.length>1){ctx.strokeStyle=highlight?"#5eead4":"#93c5fd";ctx.globalAlpha=.6;ctx.beginPath();ctx.moveTo(b.trail[0].x,b.trail[0].y);for(const t of b.trail)ctx.lineTo(t.x,t.y);ctx.stroke();ctx.globalAlpha=1}ctx.beginPath();ctx.arc(b.x,b.y,8,0,Math.PI*2);ctx.fillStyle=highlight?"#5eead4":(b.color||"#a3bffa");ctx.fill();if(CFG.showHit){ctx.strokeStyle="#fde68a";ctx.strokeRect(b.x-8,b.y-8,16,16)}this.overlay.innerHTML=`#${this.id} pipes: <b>${this.passed}</b> fit: <b>${b.fitness.toFixed(1)}</b> vy: <b>${b.vy.toFixed(2)}</b>`} }
+class Agent{constructor(genome){this.brain=genome;this.color=`hsl(${Math.floor(rand(0,360))} 70% 65%)`;this.resetBody()}resetBody(){this.x=CFG.birdX;this.y=CFG.height/2;this.vy=0;this.alive=true;this.fitness=0;this.pipes=0;this.flaps=0;this.lifeSteps=0;this.trail=[]}}
+
+// ===== Manager =====
+class Manager{
+  constructor(){this.ic=6;this.oc=1;this.arenas=[];this.slots=[];this.episodes=0;this.bestEver=null;this.bestFitness=0;this.bestPipes=0;this.hist=[];this.histPipes=[];this.histLife=[];this.histFlaps=[];this.follow=false;this.followId=0}
+  init(){this.arenas.length=0;worldGrid.innerHTML='';for(let i=0;i<CFG.arenas;i++){const ar=new Arena(i);this.arenas.push(ar);worldGrid.appendChild(ar.canvas);const g=Genome.minimal(this.ic,this.oc,CFG.layers);const a=new Agent(g);this.slots[i]={arena:ar,agent:a}}this.updateSelWhoOptions()}
+  updateSelWhoOptions(){selWho.innerHTML='';const opts=[["bestLive","Best (live)"],["bestEver","Best (ever)"]];for(let i=0;i<this.arenas.length;i++)opts.push([`arena${i}`,`Arena #${i}`]);for(const [v,l] of opts){const o=document.createElement('option');o.value=v;o.textContent=l;selWho.appendChild(o)}}
+  pickParent(){const pop=[...this.slots].filter(s=>s).map(s=>({fit:s.agent.fitness,agent:s.agent}));pop.sort((a,b)=>b.fit-a.fit);const k=Math.max(1,Math.floor(pop.length*CFG.elitePct));return pop[rnd(k)].agent}
+  spawnChild(){if(Math.random()<.5){const A=this.pickParent().brain,B=this.pickParent().brain;const child=crossover(A,B);child.mutateWeights(CFG.mutSigma,CFG.pMutWeight);child.addConnection(CFG.pAddConn);child.addNode(CFG.pAddNode);child.removeConnection(CFG.pDelConn);child.removeNode(CFG.pDelNode);return new Agent(child)}else{const A=this.pickParent().brain.clone();A.mutateWeights(CFG.mutSigma,CFG.pMutWeight);A.addConnection(CFG.pAddConn);A.addNode(CFG.pAddNode);A.removeConnection(CFG.pDelConn);A.removeNode(CFG.pDelNode);return new Agent(A)}}
+  step(){const steps=CFG.speed|0;const drawThrottle=Math.max(1,Math.floor(steps/4));for(let t=0;t<steps;t++){for(const s of this.slots){const {arena:a,agent:b}=s;if(!b.alive)continue;const {vals}=a.updatePhysics(b);s._vals=vals}for(let i=0;i<this.slots.length;i++){const s=this.slots[i];const a=s.arena,b=s.agent;if(!b.alive){this.episodes++;this.hist.push(b.fitness);if(this.hist.length>200)this.hist.shift();this.histPipes.push(b.pipes);if(this.histPipes.length>200)this.histPipes.shift();this.histLife.push(b.lifeSteps);if(this.histLife.length>200)this.histLife.shift();this.histFlaps.push(b.flaps);if(this.histFlaps.length>200)this.histFlaps.shift();if(b.pipes>this.bestPipes||b.fitness>this.bestFitness){this.bestFitness=Math.max(this.bestFitness,b.fitness);if(b.pipes>this.bestPipes)this.bestPipes=b.pipes;if(b.pipes>=CFG.bestThresh||!this.bestEver||b.fitness>this.bestEverFit){this.bestEver=b.brain.clone();this.bestEverFit=b.fitness}}const child=this.spawnChild();a.resetWorld();child.resetBody();s.agent=child}}if(t%drawThrottle===0){let bestLiveIdx=0,best=-1;for(let i=0;i<this.slots.length;i++){const f=this.slots[i].agent.fitness;if(f>best){best=f;bestLiveIdx=i}}for(let i=0;i<this.slots.length;i++){const s=this.slots[i];const highlight=(this.follow&&i===this.followId)||(!this.follow&&i===bestLiveIdx);s.arena.draw(s.agent,highlight)}stEpisodes.textContent=this.episodes.toLocaleString();stBestPipes.textContent=this.bestPipes.toLocaleString();stBestFit.textContent=this.bestFitness.toFixed(1);if(this.hist.length){const avg=this.hist.reduce((a,b)=>a+b,0)/this.hist.length;stAvg100.textContent=avg.toFixed(1)}if(this.histPipes.length){const avgP=this.histPipes.reduce((a,b)=>a+b,0)/this.histPipes.length;stAvgPipes.textContent=avgP.toFixed(2)}if(this.histLife.length){const avgL=this.histLife.reduce((a,b)=>a+b,0)/this.histLife.length;stAvgLife.textContent=avgL.toFixed(1)}if(this.histFlaps.length){const avgF=this.histFlaps.reduce((a,b)=>a+b,0)/this.histFlaps.length;stAvgFlaps.textContent=avgF.toFixed(1)}drawSpark(sparkFitness,this.hist,'#60a5fa');drawSpark(sparkPipes,this.histPipes,'#22c55e');drawSpark(sparkLife,this.histLife,'#f59e0b');const live=this.slots.map((s,i)=>({i,fit:s.agent.fitness,p:s.agent.pipes})).sort((a,b)=>b.fit-a.fit).slice(0,5);leader.innerHTML=live.map(x=>`<li>#${x.i} fit <b>${x.fit.toFixed(1)}</b> • pipes <b>${x.p}</b></li>`).join('');drawNetwork(this.pickNetworkToShow())}}}
+  pickNetworkToShow(){const v=selWho.value;if(v==='bestEver'&&this.bestEver){return{brain:this.bestEver,vals:null,label:'Best Ever'}}if(v==='bestLive'){let idx=0,best=-1;for(let i=0;i<this.slots.length;i++){const f=this.slots[i].agent.fitness;if(f>best){best=f;idx=i}}return{brain:this.slots[idx].agent.brain,vals:this.slots[idx]._vals||null,label:`Best Live (#${idx})`}}if(v.startsWith('arena')){const i=+v.replace('arena','')||0;const s=this.slots[i];return{brain:s.agent.brain,vals:s._vals||null,label:`Arena #${i}`}}return{brain:this.slots[0].agent.brain,vals:this.slots[0]._vals||null,label:`Arena #0`}}
+}
+
+// ===== Network Renderer =====
+const netCanvas=document.getElementById('netCanvas');
+const netCtx=netCanvas.getContext('2d');
+function drawNetwork(sel){const ctx=netCtx,W=netCanvas.width,H=netCanvas.height;ctx.clearRect(0,0,W,H);if(!sel||!sel.brain)return;const g=sel.brain,vals=sel.vals;const layers=[];layers.push({L:-1,n:g.ic});for(let L=0;L<g.maxL;L++)layers.push({L,n:g.layers[L]});layers.push({L:g.maxL,n:g.oc});const xpad=24,ypad=20,usableW=W-2*xpad,usableH=H-2*ypad;const xs=[];for(let i=0;i<layers.length;i++)xs[i]=xpad+usableW*(i/(layers.length-1));const positions=new Map();for(let i=0;i<layers.length;i++){const n=layers[i].n,L=layers[i].L,step=usableH/Math.max(1,n+1);for(let j=0;j<n;j++)positions.set(key({L,i:j}),{x:xs[i],y:ypad+step*(j+1)})}ctx.lineWidth=1;for(const c of g.conns){ctx.globalAlpha=c.enabled?.6:.15;const a=positions.get(key(c.from)),b=positions.get(key(c.to));if(!a||!b)continue;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=c.w>=0?'#60a5fa':'#f472b6';ctx.stroke()}ctx.globalAlpha=1;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='11px ui-monospace,monospace';for(const [k,pos] of positions){let v=0;if(vals&&vals.has(k))v=vals.get(k);const act=Math.max(0,Math.min(1,(v+1)/2));ctx.fillStyle=`rgba(94,234,212, ${0.15+act*.8})`;ctx.beginPath();ctx.arc(pos.x,pos.y,9,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#1f2937';ctx.lineWidth=1.2;ctx.stroke()}ctx.fillStyle='#9aa4b2';ctx.font='12px system-ui,sans-serif';ctx.textAlign='left';ctx.fillText(sel.label,8,12)}
+
+// ===== UI Elements =====
+const worldGrid=document.getElementById('worldGrid');
+const btnPause=document.getElementById('btnPause');
+const btnReset=document.getElementById('btnReset');
+const btnSave=document.getElementById('btnSave');
+const fileLoad=document.getElementById('fileLoad');
+const selWho=document.getElementById('selWho');
+const btnFollow=document.getElementById('btnFollow');
+const stEpisodes=document.getElementById('stEpisodes');
+const stBestPipes=document.getElementById('stBestPipes');
+const stBestFit=document.getElementById('stBestFit');
+const stAvg100=document.getElementById('stAvg100');
+const stAvgPipes=document.getElementById('stAvgPipes');
+const stAvgLife=document.getElementById('stAvgLife');
+const stAvgFlaps=document.getElementById('stAvgFlaps');
+const stFPS=document.getElementById('stFPS');
+const leader=document.getElementById('leader');
+const sparkFitness=document.getElementById('sparkFitness').getContext('2d');
+const sparkPipes=document.getElementById('sparkPipes').getContext('2d');
+const sparkLife=document.getElementById('sparkLife').getContext('2d');
+const btnSelfTest=document.getElementById('btnSelfTest');
+const testOut=document.getElementById('testOut');
+const chkCenters=document.getElementById('chkCenters');
+const chkHit=document.getElementById('chkHit');
+const chkTrail=document.getElementById('chkTrail');
+
+// ===== Manager FIRST, then bind ranges =====
+let running=true; const mgr=new Manager();
+
+function bindRange(id,lblKey,cfgKey,on){const r=document.getElementById(id),l=document.getElementById(lblKey);const set=v=>{l.textContent=(+v).toString();on(+v)};r.addEventListener('input',e=>set(e.target.value));set(r.value)}
+
+bindRange('rngSpeed','lblSpeed','speed',v=>CFG.speed=v);
+bindRange('rngArenas','lblArenas','arenas',v=>{CFG.arenas=v;mgr.init()});
+bindRange('rngGap','lblGap','gap',v=>{CFG.gap=v});
+bindRange('rngSpacing','lblSpacing','spacing',v=>{CFG.spacing=v});
+bindRange('rngGrav','lblGrav','gravity',v=>{CFG.gravity=v});
+bindRange('rngFlap','lblFlap','flapImpulse',v=>{CFG.flapImpulse=v});
+bindRange('rngSigma','lblSigma','mutSigma',v=>{CFG.mutSigma=v});
+bindRange('rngPMW','lblPMW','pMutWeight',v=>{CFG.pMutWeight=v});
+bindRange('rngPAC','lblPAC','pAddConn',v=>{CFG.pAddConn=v});
+bindRange('rngPAN','lblPAN','pAddNode',v=>{CFG.pAddNode=v});
+bindRange('rngPDC','lblPDC','pDelConn',v=>{CFG.pDelConn=v});
+bindRange('rngPDN','lblPDN','pDelNode',v=>{CFG.pDelNode=v});
+bindRange('rngElite','lblElite','elitePct',v=>{CFG.elitePct=v/100});
+bindRange('rngBestThresh','lblBestThresh','bestThresh',v=>{CFG.bestThresh=v});
+bindRange('rngLayers','lblLayers','layers',v=>{CFG.layers=v;for(const s of mgr.slots){if(!s)continue;const g=s.agent.brain;g.maxL=CFG.layers;if(g.layers.length<CFG.layers)g.layers=[...g.layers,...Array.from({length:CFG.layers-g.layers.length},()=>0)]}});
+
+btnFollow.onclick=()=>{mgr.follow=!mgr.follow;btnFollow.textContent=mgr.follow?'Following':'Follow'};
+chkCenters.onchange=()=>CFG.showCenters=chkCenters.checked;
+chkHit.onchange=()=>CFG.showHit=chkHit.checked;
+chkTrail.onchange=()=>CFG.showTrail=chkTrail.checked;
+
+btnPause.onclick=()=>{running=!running;btnPause.textContent=running?'⏸️ Pause':'▶️ Resume'};
+btnReset.onclick=()=>{mgr.init()};
+btnSave.onclick=()=>{const best=mgr.bestEver||mgr.slots.reduce((p,s)=>s.agent.fitness>(p?.fitness||-1)?s.agent:p,null)?.brain;if(!best){alert('No network to save yet.');return}const blob=new Blob([JSON.stringify(best)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='flappy_best.json';a.click();URL.revokeObjectURL(a.href)};
+fileLoad.onchange=e=>{const file=e.target.files[0];if(!file)return;const fr=new FileReader();fr.onload=()=>{try{const obj=JSON.parse(fr.result);const g=Object.assign(new Genome(obj.ic,obj.oc,obj.maxL),obj);mgr.bestEver=g;alert('Loaded best network. Select "Best (ever)" in the viewer.')}catch(err){alert('Failed to load: '+err)}};fr.readAsText(file)};
+
+window.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();btnPause.click()}if(e.key==='f'||e.key==='F'){btnFollow.click()}if(e.key==='s'||e.key==='S'){btnSave.click()}});
+
+// initialize
+mgr.init();
+
+// ===== Mini sparkline util & FPS =====
+function drawSpark(ctx,data,color){const W=ctx.canvas.width,H=ctx.canvas.height;ctx.clearRect(0,0,W,H);if(!data.length)return;const n=data.length;const mx=Math.max(...data),mn=Math.min(...data);const scale=v=>mx===mn?H/2:H-((v-mn)/(mx-mn))*H;ctx.beginPath();ctx.moveTo(0,scale(data[0]));const step=W/Math.max(1,n-1);for(let i=1;i<n;i++)ctx.lineTo(i*step,scale(data[i]));ctx.lineWidth=1.5;ctx.strokeStyle=color;ctx.stroke()}
+let lastTime=performance.now(),fps=0,fpsAlpha=.1;function loop(){const now=performance.now();const dt=now-lastTime;lastTime=now;const inst=1000/dt;fps=fps?fps*(1-fpsAlpha)+inst*fpsAlpha:inst;if(running)mgr.step();stFPS.textContent=Math.round(fps);requestAnimationFrame(loop)}requestAnimationFrame(loop);
+
+function refreshSel(){mgr.updateSelWhoOptions()}refreshSel();
+
+// ===== Self‑tests =====
+function assert(name,cond){const ok=!!cond;const line=document.createElement('div');line.className=ok?'pass':'fail';line.textContent=(ok?'✔ ':'✖ ')+name;testOut.appendChild(line);if(!ok)console.error('Test failed:',name)}
+btnSelfTest.onclick=()=>{testOut.innerHTML='';try{assert('Manager exists',typeof mgr==='object'&&mgr instanceof Manager);assert('Gap slider min at 10',document.getElementById('rngGap').min==='10');assert('Deletion sliders exist',!!document.getElementById('rngPDC')&&!!document.getElementById('rngPDN'));const oldCount=mgr.arenas.length;document.getElementById('rngArenas').value=String(Math.max(1,oldCount-1));document.getElementById('rngArenas').dispatchEvent(new Event('input'));assert('mgr.init updated arenas',mgr.arenas.length!==oldCount)}catch(e){assert('No unexpected exceptions',false);const pre=document.createElement('pre');pre.textContent=e.stack||String(e);testOut.appendChild(pre)}};
+</script>
+</body>
+</html>
